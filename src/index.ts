@@ -14,8 +14,6 @@ console.clear();
 const api = express();
 const PORT = process.env.PORT ?? 3000;
 (async function main() {
-	const users: Record<string, User> = await retrieveUsers();
-	const transactions: Transaction[] = await retrieveTransactions();
 	const redisClient = createClient({
 		password: process.env.REDIS_TOKEN,
 		socket: {
@@ -28,16 +26,18 @@ const PORT = process.env.PORT ?? 3000;
 		(async function () {
 			await redisClient.connect();
 		})();
+	const users: Record<string, User> = await retrieveUsers();
+	const transactions: Transaction[] = await retrieveTransactions();
 
 	async function retrieveUsers(): Promise<Record<string, User>> {
 		if (process.env.USE_DB === 'production') {
-			return JSON.parse(await redisClient.GET('users') ?? '{}');
+			return JSON.parse((await redisClient.GET('users')) ?? '{}');
 		}
 		return JSON.parse(readFileSync('./users.json', 'utf8'));
 	}
-	function saveUsers(): void {
+	async function saveUsers(): Promise<void> {
 		if (process.env.USE_DB === 'production') {
-			redisClient.SET('users', JSON.stringify(users));
+			await redisClient.SET('users', JSON.stringify(users));
 		}
 		writeFileSync('./users.json', JSON.stringify(users));
 	}
