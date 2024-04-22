@@ -231,7 +231,7 @@ const PORT = process.env.PORT ?? 5000;
 	api.use(express.json());
 
 	api.post('/new-bank-account', async (request, response) => {
-		console.log(request.body?.username);
+		console.log(request.body);
 		const outcome = await createAccount(request.body?.username);
 		return response.status(outcome.status).json(outcome);
 	});
