@@ -14,7 +14,7 @@ console.clear();
 
 const api = express();
 api.use(cors({ origin: '*' }));
-const PORT = process.env.PORT ?? 3000;
+const PORT = process.env.PORT ?? 5000;
 (async function main() {
 	const redisClient = createClient({
 		password: process.env.REDIS_TOKEN,
@@ -95,7 +95,7 @@ const PORT = process.env.PORT ?? 3000;
 		return {
 			status: 200,
 			result: {
-				token: token.join('')
+				token: tokenString
 			},
 			error: null
 		};
@@ -186,10 +186,6 @@ const PORT = process.env.PORT ?? 3000;
 				transaction
 			};
 		}
-
-		const inputTokenHash = scryptSync(payerToken, payerSalt, 64).toString(
-			'hex'
-		);
 		if (payerAccount.balance < amount) {
 			transaction.status = 'declined';
 			transaction.error = {
@@ -268,6 +264,58 @@ const PORT = process.env.PORT ?? 3000;
 		const receivedHash = scryptSync(token, salt, 64);
 		return timingSafeEqual(expectedHash, receivedHash);
 	}
+
+	api.delete('/delete-account', (request, response) => {
+		const [, encodedAuth] = String(request.headers['authorization']).split(' ');
+		const digestedAuth = Buffer.from(encodedAuth, 'base64').toString('ascii');
+		const [username, token] = digestedAuth.toString().split(':');
+
+		if (typeof encodedAuth !== 'string')
+			return response.status(400).json({
+				status: 400,
+				error: {
+					code: 'INVALID_AUTH',
+					description: 'Invalid Authorization header.'
+				}
+			});
+		if (!users[username])
+			return response.status(404).json({
+				status: 404,
+				error: {
+					code: 'NO_SUCH_USER',
+					description: `Cannot find user "${username}".`
+				}
+			});
+		const outcome = login(username, token);
+		if (!outcome)
+			return response.status(401).json({
+				status: 401,
+				error: {
+					code: 'UNAUTHORIZED_DELETION',
+					description: 'Incorrect credentials.'
+				}
+			});
+		if (users[username].balance > 0)
+			return response.status(403).json({
+				status: 403,
+				error: {
+					code: 'NONZERO_BALANCE',
+					description: 'Cannot delete non-empty account.'
+				}
+			});
+		if (username == 'admin')
+			return response.status(403).json({
+				status: 403,
+				error: {
+					code: 'DELETION_FORBIDDEN',
+					description: 'Cannot delete admin account.'
+				}
+			});
+
+		delete users[username];
+		saveUsers();
+		return response.status(204).send();
+	});
 
 	api.get('/my-info', (request, response) => {
 		const [, encodedAuth] = String(request.headers['authorization']).split(' ');
