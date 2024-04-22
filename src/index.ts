@@ -8,10 +8,12 @@ import {
 } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { createClient } from 'redis';
+import cors = require('cors');
 
 console.clear();
 
 const api = express();
+api.use(cors({ origin: '*' }));
 const PORT = process.env.PORT ?? 3000;
 (async function main() {
 	const redisClient = createClient({
