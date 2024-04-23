@@ -127,7 +127,7 @@ const PORT = process.env.PORT ?? 5000;
 				code: 'BAD_AMOUNT',
 				description: `Invalid amount.`
 			};
-			saveTransactions();
+			// saveTransactions();
 			return {
 				status: 400,
 				transaction
@@ -140,7 +140,7 @@ const PORT = process.env.PORT ?? 5000;
 				code: 'NO_SUCH_PAYER',
 				description: `Payer "${payer}" does not exist.`
 			};
-			saveTransactions();
+			// saveTransactions();
 			return {
 				status: 404,
 				transaction
@@ -152,14 +152,12 @@ const PORT = process.env.PORT ?? 5000;
 				code: 'NO_SUCH_PAYEE',
 				description: `Payee "${payee}" does not exist.`
 			};
-			saveTransactions();
+			// saveTransactions();
 			return {
 				status: 404,
 				transaction
 			};
 		}
-		transactions.push(transaction);
-		const [payerSalt, payerHash] = payerAccount.key.split(':');
 
 		if (typeof amount !== 'number') {
 			transaction.status = 'declined';
@@ -167,7 +165,7 @@ const PORT = process.env.PORT ?? 5000;
 				code: 'INVALID_AMOUNT',
 				description: 'Amount must be a number.'
 			};
-			saveTransactions();
+			// saveTransactions();
 			return {
 				status: 403,
 				transaction
@@ -180,7 +178,7 @@ const PORT = process.env.PORT ?? 5000;
 				code: 'INVALID_AMOUNT',
 				description: 'Amount must be greater than zero.'
 			};
-			saveTransactions();
+			// saveTransactions();
 			return {
 				status: 403,
 				transaction
@@ -197,6 +195,17 @@ const PORT = process.env.PORT ?? 5000;
 				status: 403,
 				transaction
 			};
+		}
+		if (payer === payee) {
+			transaction.status = 'declined';
+			transaction.error = {
+				code: 'SELF_TRANSACTION',
+				description: `Cannot send funds to oneself.`
+			}
+			return {
+				status: 403,
+				transaction
+			}
 		}
 		if (login(payer, payerToken)) {
 			// Authorize transaction
@@ -236,8 +245,6 @@ const PORT = process.env.PORT ?? 5000;
 	});
 	api.post('/send-money', (request, response) => {
 		const [, encodedAuth] = String(request.headers['authorization']).split(' ');
-		const digestedAuth = Buffer.from(encodedAuth, 'base64').toString('ascii');
-		const [username, token] = digestedAuth.toString().split(':');
 
 		if (typeof encodedAuth !== 'string')
 			response.status(400).json({
@@ -247,6 +254,8 @@ const PORT = process.env.PORT ?? 5000;
 					description: 'Invalid Authorization header.'
 				}
 			});
+		const digestedAuth = Buffer.from(encodedAuth, 'base64').toString('ascii');
+		const [username, token] = digestedAuth.toString().split(':');
 		const outcome = processPayment(
 			request.body?.amount,
 			username,
@@ -266,9 +275,7 @@ const PORT = process.env.PORT ?? 5000;
 	}
 
 	api.delete('/delete-account', (request, response) => {
-		const [, encodedAuth] = String(request.headers['authorization']).split(' ');
-		const digestedAuth = Buffer.from(encodedAuth, 'base64').toString('ascii');
-		const [username, token] = digestedAuth.toString().split(':');
+		const [, encodedAuth] = String(request.headers.authorization).split(' ');
 
 		if (typeof encodedAuth !== 'string')
 			return response.status(400).json({
@@ -278,6 +285,11 @@ const PORT = process.env.PORT ?? 5000;
 					description: 'Invalid Authorization header.'
 				}
 			});
+
+		const digestedAuth = Buffer.from(encodedAuth, 'base64').toString('ascii');
+
+		const [username, token] = digestedAuth.toString().split(':');
+
 		if (!users[username])
 			return response.status(404).json({
 				status: 404,
@@ -319,6 +331,16 @@ const PORT = process.env.PORT ?? 5000;
 
 	api.get('/my-info', (request, response) => {
 		const [, encodedAuth] = String(request.headers['authorization']).split(' ');
+
+		if (typeof encodedAuth !== 'string')
+			return response.status(400).json({
+				status: 400,
+				error: {
+					code: 'INVALID_AUTH',
+					description: 'Invalid Authorization header.'
+				}
+			});
+
 		const digestedAuth = Buffer.from(encodedAuth, 'base64').toString('ascii');
 		const [user, token] = digestedAuth.toString().split(':');
 		if (typeof users[user] != 'object') {
@@ -367,7 +389,7 @@ const PORT = process.env.PORT ?? 5000;
 				status: 401,
 				error: {
 					code: 'UNAUTHORIZED_QUERY',
-					description: ''
+					description: 'Incorrect credentials.'
 				},
 				result: null
 			});
@@ -400,6 +422,16 @@ const PORT = process.env.PORT ?? 5000;
 			error: {
 				code: 'NO_SUCH_RESOURCE',
 				description: `Resource "${request.url}" wasn't found.`
+			}
+		});
+		next();
+	});
+	api.use((_, response, next) => {
+		response.status(500).json({
+			status: 500,
+			error: {
+				code: 'SERVER_ERROR',
+				description: `Something went wrong. Try again or contact <santyrojasprieto9+api@gmail.com>.`
 			}
 		});
 		next();
