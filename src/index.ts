@@ -287,7 +287,6 @@ const PORT = process.env.PORT ?? 5000;
 			});
 
 		const digestedAuth = Buffer.from(encodedAuth, 'base64').toString('ascii');
-
 		const [username, token] = digestedAuth.toString().split(':');
 
 		if (!users[username])
@@ -377,13 +376,22 @@ const PORT = process.env.PORT ?? 5000;
 
 	api.get('/transaction-info', (request, response) => {
 		const [, encodedAuth] = String(request.headers['authorization']).split(' ');
+		if (typeof encodedAuth !== 'string')
+			return response.status(400).json({
+				status: 400,
+				error: {
+					code: 'INVALID_AUTH',
+					description: 'Invalid Authorization header.'
+				}
+			});
 		const digestedAuth = Buffer.from(encodedAuth, 'base64').toString('ascii');
-		const [user, token] = digestedAuth.toString().split(':');
+		const [user, token] = digestedAuth.split(':');
 		const [saltString, hashString] = users[user].key.split(':');
 		const salt = Buffer.from(saltString, 'hex');
 		const expectedHash = Buffer.from(hashString, 'hex');
 		const receivedHash = scryptSync(token, salt, 64);
 		const allow = timingSafeEqual(expectedHash, receivedHash);
+		const transactionId = String(request.query.transaction_id);
 		if (!allow) {
 			return response.status(401).json({
 				status: 401,
@@ -395,10 +403,10 @@ const PORT = process.env.PORT ?? 5000;
 			});
 		}
 		const isOwnTransaction = users[user].transaction_ids.includes(
-			request.body.transaction_id
+			transactionId
 		);
 		const transaction = transactions.find(
-			(transaction) => transaction.id == request.body.transaction_id
+			(transaction) => transaction.id == transactionId
 		);
 
 		if (!isOwnTransaction || transaction == undefined) {
@@ -406,7 +414,7 @@ const PORT = process.env.PORT ?? 5000;
 				status: 404,
 				error: {
 					code: 'NO_SUCH_TRANSACTION',
-					description: `Transaction with ID ${request.body.transaction_id} could not be found.`
+					description: `Transaction with ID ${transactionId} could not be found.`
 				}
 			});
 		}
