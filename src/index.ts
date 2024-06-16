@@ -77,7 +77,7 @@ const PORT = process.env.PORT ?? 5000;
 		const salt = randomBytes(16);
 		const hash = scryptSync(token, salt, 64);
 		const newUser: User = {
-			balance: username == 'admin' ? 21_000_000.0 : 0.0,
+			balance: username == 'admin' ? 21000000 : 0.0,
 			key: `${salt.toString('hex')}:${hash.toString('hex')}`,
 			transaction_ids: []
 		};
@@ -209,6 +209,7 @@ const PORT = process.env.PORT ?? 5000;
 		}
 		if (login(payer, payerToken)) {
 			// Authorize transaction
+			if (payer !== 'admin')
 			payerAccount.balance = Number((payerAccount.balance - amount).toFixed(2));
 			payeeAccount.balance = Number((payeeAccount.balance + amount).toFixed(2));
 			transaction.status = 'approved';
