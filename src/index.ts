@@ -46,7 +46,7 @@ const PORT = process.env.PORT ?? 5000;
 
 	async function retrieveTransactions(): Promise<Transaction[]> {
 		if (process.env.USE_DB === 'production') {
-			return JSON.parse((await redisClient.GET('transactions')) ?? '{}');
+			return JSON.parse((await redisClient.GET('transactions')) ?? '[]');
 		}
 		return JSON.parse(readFileSync('./transactions.json', 'utf8'));
 	}
