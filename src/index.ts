@@ -343,13 +343,12 @@ const PORT = process.env.PORT ?? 5000;
 		const digestedAuth = Buffer.from(encodedAuth, 'base64').toString('ascii');
 		const [user, token] = digestedAuth.toString().split(':');
 		if (typeof users[user] != 'object') {
-			return response.status(401).json({
-				status: 401,
+			return response.status(404).json({
+				status: 404,
 				error: {
-					code: 'UNAUTHORIZED_QUERY',
-					description: 'Incorrect credentials.'
-				},
-				result: null
+					code: 'NO_SUCH_USER',
+					description: `Cannot find user "${user}".`
+				}
 			});
 		}
 		const [saltString, hashString] = users[user].key.split(':');
