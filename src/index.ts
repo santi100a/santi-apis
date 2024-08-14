@@ -23,8 +23,8 @@ const PORT = process.env.PORT ?? 5000;
 	const usersCollection = db.collection<User>('users');
 	const transactionsCollection = db.collection<Transaction>('transactions');
 
-	const users: Record<string, User> = await retrieveUsers();
-	const transactions: Transaction[] = await retrieveTransactions();
+	let users: Record<string, User> = await retrieveUsers();
+	let transactions: Transaction[] = await retrieveTransactions();
 
 	async function retrieveUsers(): Promise<Record<string, User>> {
 		const usersCursor = usersCollection.find({});
@@ -235,15 +235,14 @@ const PORT = process.env.PORT ?? 5000;
 			};
 		}
 	}
-	function calculateBalance(user: User) {
+	function calculateBalance(user: User): number {
 		if (user.username === 'admin') return Infinity;
 		const transactionObjects: Transaction[] = [];
 		user.transaction_ids.forEach((transactionId) => {
 			transactionObjects.push(transactions.find(trans => trans.id === transactionId)!);
 		});
 		const debitsAndCredits = transactionObjects.map(trans => trans.payer === user.username ? -trans.amount : trans.amount);
-		console.log(debitsAndCredits);
-		return sum(debitsAndCredits);
+		return Number(sum(debitsAndCredits).toFixed(2));
 	}
 
 	api.use(express.json());
@@ -322,7 +321,7 @@ const PORT = process.env.PORT ?? 5000;
 		return response.status(204).end();
 	});
 
-	api.get('/my-info', (request, response) => {
+	api.get('/my-info', async (request, response) => {
 		const [, encodedAuth] = String(request.headers['authorization']).split(' ');
 
 		if (typeof encodedAuth !== 'string')
@@ -360,6 +359,8 @@ const PORT = process.env.PORT ?? 5000;
 				result: null
 			});
 		}
+		transactions = await retrieveTransactions();
+		users = await retrieveUsers();
 		return response.status(200).json({
 			status: 200,
 			error: null,
