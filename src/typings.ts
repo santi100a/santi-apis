@@ -2,7 +2,6 @@ type TransactionStatus = 'approved' | 'pending' | 'declined';
 
 interface User {
     readonly username: string;
-    balance: number | 'Infinity';
     readonly key: string;
     transaction_ids: string[];
 }

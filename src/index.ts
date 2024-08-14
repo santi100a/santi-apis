@@ -8,6 +8,7 @@ import {
 } from 'node:crypto';
 import { MongoClient } from 'mongodb';
 import cors = require('cors');
+import sum = require('@santi100/summation-lib');
 
 console.clear();
 
@@ -80,7 +81,6 @@ const PORT = process.env.PORT ?? 5000;
 		const hash = scryptSync(token, salt, 64);
 		const newUser: User = {
 			username,
-			balance: username == 'admin' ? 'Infinity' : 0.00,
 			key: `${salt.toString('hex')}:${hash.toString('hex')}`,
 			transaction_ids: []
 		};
@@ -184,7 +184,7 @@ const PORT = process.env.PORT ?? 5000;
 				transaction
 			};
 		}
-		if (payerAccount.balance < amount) {
+		if (calculateBalance(payerAccount) < amount) {
 			transaction.status = 'declined';
 			transaction.error = {
 				code: 'INSUFFICIENT_FUNDS',
@@ -209,13 +209,11 @@ const PORT = process.env.PORT ?? 5000;
 		}
 		if (login(payer, payerToken)) {
 			// Authorize transaction
-			payerAccount.balance = Number((Number(payerAccount.balance) - amount).toFixed(2));
-			payeeAccount.balance = Number((Number(payeeAccount.balance) + amount).toFixed(2));
 			transaction.status = 'approved';
 			transaction.error = null;
 			payerAccount.transaction_ids = [...payerAccount.transaction_ids, id];
 			payeeAccount.transaction_ids = [...payeeAccount.transaction_ids, id];
-
+			
 			transactions.push(transaction);
 			saveUsers();
 			saveTransactions();
@@ -236,6 +234,16 @@ const PORT = process.env.PORT ?? 5000;
 				transaction
 			};
 		}
+	}
+	function calculateBalance(user: User) {
+		if (user.username === 'admin') return Infinity;
+		const transactionObjects: Transaction[] = [];
+		user.transaction_ids.forEach((transactionId) => {
+			transactionObjects.push(transactions.find(trans => trans.id === transactionId)!);
+		});
+		const debitsAndCredits = transactionObjects.map(trans => trans.payer === user.username ? -trans.amount : trans.amount);
+		console.log(debitsAndCredits);
+		return sum(debitsAndCredits);
 	}
 
 	api.use(express.json());
@@ -355,7 +363,7 @@ const PORT = process.env.PORT ?? 5000;
 		return response.status(200).json({
 			status: 200,
 			error: null,
-			result: { ...users[user], key: undefined }
+			result: { ...users[user], key: undefined, _id: undefined, balance: calculateBalance(users[user]) }
 		});
 	});
 
@@ -409,7 +417,7 @@ const PORT = process.env.PORT ?? 5000;
 			result: transaction
 		});
 	});
-	
+
 	api.listen(PORT, () =>
 		console.log(
 			'Express server listening on port %d in %s mode.',

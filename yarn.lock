@@ -9,10 +9,22 @@
   dependencies:
     sparse-bitfield "^3.0.3"
 
+"@santi100/assertion-lib@^1.0.8":
+  version "1.0.8"
+  resolved "https://registry.yarnpkg.com/@santi100/assertion-lib/-/assertion-lib-1.0.8.tgz#549182e6eeaae693081532405af653920985513b"
+  integrity sha512-bgxIXipilU2ddeDyS6rZBLIr2aV4s9i323ajs1SCCWoIaRyGRDW31ZoKFeXOA/cJntwZFOD0AXopTcYti8nnjQ==
+  dependencies:
+    "@santi100/equal-lib" "^1.0.8"
+
 "@santi100/assertion-lib@^2.0.1":
   version "2.0.2"
   resolved "https://registry.yarnpkg.com/@santi100/assertion-lib/-/assertion-lib-2.0.2.tgz#9e8fe5216a426d4c6a0f4fa644bce1b972b2df63"
   integrity sha512-u+V6pNuXcgFvcr/ZWD7l1gifZyIDrd4dSsW/dyWO147JOxPFWcxPfDLPPTv8+O3DXILTybvRv1umvW1CS9f/SA==
+
+"@santi100/equal-lib@^1.0.8":
+  version "1.0.9"
+  resolved "https://registry.yarnpkg.com/@santi100/equal-lib/-/equal-lib-1.0.9.tgz#bac892efb695f12032eda478f6f8868ba49170c3"
+  integrity sha512-PWimpdu6YA0gEfFCfYuwS79qUIX+et5CIunSCnXOZJVm7oTS1sL3fhfRp6V7R3fjoDFgWHGs23m6C+r9NIxuLQ==
 
 "@santi100/random-lib@^1.1.7":
   version "1.1.7"
@@ -20,6 +32,13 @@
   integrity sha512-shGXG6JtmuBbE6+c3TkxzS48BTY6MXSwJQ0t9PdNkcCBbLLmLfQ5IYo/AtUZxFsudbOfHtrOlVeWqu/hKnqUIw==
   dependencies:
     "@santi100/assertion-lib" "^2.0.1"
+
+"@santi100/summation-lib@^0.0.2":
+  version "0.0.2"
+  resolved "https://registry.yarnpkg.com/@santi100/summation-lib/-/summation-lib-0.0.2.tgz#e886f01f4a6eeecc5dc652a4d2bd3d78e256ece5"
+  integrity sha512-UFEH05AdvffD+7EPmVjUfn5NiKBAcAq1Cjd1tjC3C+tT/3aZ8FliZNtOoou8TuV3en6Ra4BbojZAtaASr8FQ0g==
+  dependencies:
+    "@santi100/assertion-lib" "^1.0.8"
 
 "@types/body-parser@*":
   version "1.19.5"
