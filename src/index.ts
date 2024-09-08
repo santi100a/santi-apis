@@ -23,8 +23,8 @@ const PORT = process.env.PORT ?? 5000;
 	const usersCollection = db.collection<User>('users');
 	const transactionsCollection = db.collection<Transaction>('transactions');
 
-	let users: Record<string, User> = await retrieveUsers();
-	let transactions: Transaction[] = await retrieveTransactions();
+	let globalUsers: Record<string, User> = await retrieveUsers();
+	let globalTransactions: Transaction[] = await retrieveTransactions();
 
 	async function retrieveUsers(): Promise<Record<string, User>> {
 		const usersCursor = usersCollection.find({});
@@ -37,7 +37,7 @@ const PORT = process.env.PORT ?? 5000;
 	}
 
 	async function saveUsers(): Promise<void> {
-		for (const [username, user] of Object.entries(users)) {
+		for (const [username, user] of Object.entries(globalUsers)) {
 			await usersCollection.updateOne(
 				{ username },
 				{ $set: user },
@@ -47,11 +47,11 @@ const PORT = process.env.PORT ?? 5000;
 	}
 
 	async function retrieveTransactions(): Promise<Transaction[]> {
-		return transactionsCollection.find({}).toArray();
+		return (await transactionsCollection.find({}).toArray()).map(transaction => ({...transaction, _id: undefined }));
 	}
 
 	async function saveTransactions(): Promise<void> {
-		for (const transaction of transactions) {
+		for (const transaction of globalTransactions) {
 			await transactionsCollection.updateOne(
 				{ id: transaction.id },
 				{ $set: transaction },
@@ -60,7 +60,7 @@ const PORT = process.env.PORT ?? 5000;
 		}
 	}
 
-	async function createAccount(username: string): Promise<CreationOutcome> {
+	async function createAccount(username: string): Promise<CreationResponse> {
 		if (typeof username !== 'string' || String(username).length == 0)
 			return {
 				status: 400,
@@ -95,7 +95,7 @@ const PORT = process.env.PORT ?? 5000;
 				},
 				result: null
 			};
-		users[username] = newUser;
+		globalUsers[username] = newUser;
 		await saveUsers();
 		return {
 			status: 200,
@@ -106,23 +106,25 @@ const PORT = process.env.PORT ?? 5000;
 		};
 	}
 
-	function processPayment(
+	async function processPayment(
 		amount: number,
 		payer: string,
 		payee: string,
 		payerToken: string,
 		purpose = ''
-	): PaymentOutcome {
+	): Promise<APIResponse> {
 		amount = Number(Number(amount).toFixed(2));
-		const payerAccount = users[payer];
-		const payeeAccount = users[payee];
+		const payerAccount = globalUsers[payer];
+		const payeeAccount = globalUsers[payee];
 		const id = randomUUID();
 		const transaction: Transaction = {
+			datetime: Date.now(),
 			amount,
 			payer,
 			payee,
 			purpose,
 			id,
+			error: null,
 			status: 'pending'
 		};
 
@@ -134,7 +136,8 @@ const PORT = process.env.PORT ?? 5000;
 			};
 			return {
 				status: 400,
-				transaction
+				result: transaction,
+				error: transaction.error
 			};
 		}
 
@@ -146,7 +149,8 @@ const PORT = process.env.PORT ?? 5000;
 			};
 			return {
 				status: 404,
-				transaction
+				result: transaction,
+				error: transaction.error
 			};
 		}
 		if (typeof payeeAccount !== 'object') {
@@ -157,7 +161,8 @@ const PORT = process.env.PORT ?? 5000;
 			};
 			return {
 				status: 404,
-				transaction
+				result: transaction,
+				error: transaction.error
 			};
 		}
 
@@ -169,7 +174,8 @@ const PORT = process.env.PORT ?? 5000;
 			};
 			return {
 				status: 403,
-				transaction
+				result: transaction,
+				error: transaction.error
 			};
 		}
 
@@ -181,7 +187,8 @@ const PORT = process.env.PORT ?? 5000;
 			};
 			return {
 				status: 403,
-				transaction
+				result: transaction,
+				error: transaction.error
 			};
 		}
 		if (calculateBalance(payerAccount) < amount) {
@@ -193,7 +200,8 @@ const PORT = process.env.PORT ?? 5000;
 			saveTransactions();
 			return {
 				status: 403,
-				transaction
+				result: transaction,
+				error: transaction.error
 			};
 		}
 		if (payer === payee) {
@@ -201,11 +209,12 @@ const PORT = process.env.PORT ?? 5000;
 			transaction.error = {
 				code: 'SELF_TRANSACTION',
 				description: `Cannot send funds to oneself.`
-			}
+			};
 			return {
 				status: 403,
-				transaction
-			}
+				result: transaction,
+				error: transaction.error
+			};
 		}
 		if (login(payer, payerToken)) {
 			// Authorize transaction
@@ -213,14 +222,29 @@ const PORT = process.env.PORT ?? 5000;
 			transaction.error = null;
 			payerAccount.transaction_ids = [...payerAccount.transaction_ids, id];
 			payeeAccount.transaction_ids = [...payeeAccount.transaction_ids, id];
-			
-			transactions.push(transaction);
-			saveUsers();
-			saveTransactions();
+
+			globalTransactions.push(transaction);
+
+			await usersCollection.updateOne(
+				{ username: payerAccount.username },
+				{ $set: payerAccount },
+				{ upsert: true }
+			);
+			await usersCollection.updateOne(
+				{ username: payeeAccount.username },
+				{ $set: payeeAccount },
+				{ upsert: true }
+			);
+			await transactionsCollection.updateOne(
+				{ id: transaction.id },
+				{ $set: transaction },
+				{ upsert: true }
+			);
 
 			return {
 				status: 200,
-				transaction
+				result: transaction,
+				error: null
 			};
 		} else {
 			transaction.status = 'declined';
@@ -231,17 +255,24 @@ const PORT = process.env.PORT ?? 5000;
 			saveTransactions();
 			return {
 				status: 401,
-				transaction
+				result: transaction,
+				error: transaction.error
 			};
+				
 		}
 	}
 	function calculateBalance(user: User): number {
 		if (user.username === 'admin') return Infinity;
+		if (user.transaction_ids.length === 0) return 0;
 		const transactionObjects: Transaction[] = [];
 		user.transaction_ids.forEach((transactionId) => {
-			transactionObjects.push(transactions.find(trans => trans.id === transactionId)!);
+			transactionObjects.push(
+				globalTransactions.find((trans) => trans.id === transactionId)!
+			);
 		});
-		const debitsAndCredits = transactionObjects.map(trans => trans.payer === user.username ? -trans.amount : trans.amount);
+		const debitsAndCredits = transactionObjects.map((trans) =>
+			trans.payer === user.username ? -trans.amount : trans.amount
+		);
 		return Number(sum(debitsAndCredits).toFixed(2));
 	}
 
@@ -251,7 +282,7 @@ const PORT = process.env.PORT ?? 5000;
 		const outcome = await createAccount(request.body?.username);
 		return response.status(outcome.status).json(outcome);
 	});
-	api.post('/send-money', (request, response) => {
+	api.post('/send-money', async (request, response) => {
 		const [, encodedAuth] = String(request.headers['authorization']).split(' ');
 
 		if (typeof encodedAuth !== 'string')
@@ -264,7 +295,7 @@ const PORT = process.env.PORT ?? 5000;
 			});
 		const digestedAuth = Buffer.from(encodedAuth, 'base64').toString('ascii');
 		const [username, token] = digestedAuth.toString().split(':');
-		const outcome = processPayment(
+		const outcome = await processPayment(
 			request.body?.amount,
 			username,
 			request.body?.payee,
@@ -275,7 +306,7 @@ const PORT = process.env.PORT ?? 5000;
 	});
 
 	function login(user: string, token: string) {
-		const [saltString, hashString] = users[user].key.split(':');
+		const [saltString, hashString] = globalUsers[user].key.split(':');
 		const salt = Buffer.from(saltString, 'hex');
 		const expectedHash = Buffer.from(hashString, 'hex');
 		const receivedHash = scryptSync(token, salt, 64);
@@ -297,7 +328,7 @@ const PORT = process.env.PORT ?? 5000;
 		const digestedAuth = Buffer.from(encodedAuth, 'base64').toString('ascii');
 		const [username, token] = digestedAuth.toString().split(':');
 
-		if (!users[username])
+		if (!globalUsers[username])
 			return response.status(404).json({
 				status: 404,
 				error: {
@@ -314,7 +345,7 @@ const PORT = process.env.PORT ?? 5000;
 				}
 			});
 
-		delete users[username];
+		delete globalUsers[username];
 		await usersCollection.deleteOne({ username });
 		await saveUsers();
 
@@ -335,7 +366,7 @@ const PORT = process.env.PORT ?? 5000;
 
 		const digestedAuth = Buffer.from(encodedAuth, 'base64').toString('ascii');
 		const [user, token] = digestedAuth.toString().split(':');
-		if (typeof users[user] != 'object') {
+		if (typeof globalUsers[user] != 'object') {
 			return response.status(404).json({
 				status: 404,
 				error: {
@@ -344,7 +375,7 @@ const PORT = process.env.PORT ?? 5000;
 				}
 			});
 		}
-		const [saltString, hashString] = users[user].key.split(':');
+		const [saltString, hashString] = globalUsers[user].key.split(':');
 		const salt = Buffer.from(saltString, 'hex');
 		const expectedHash = Buffer.from(hashString, 'hex');
 		const receivedHash = scryptSync(token, salt, 64);
@@ -359,12 +390,17 @@ const PORT = process.env.PORT ?? 5000;
 				result: null
 			});
 		}
-		transactions = await retrieveTransactions();
-		users = await retrieveUsers();
+		globalTransactions = await retrieveTransactions();
+		globalUsers = await retrieveUsers();
 		return response.status(200).json({
 			status: 200,
 			error: null,
-			result: { ...users[user], key: undefined, _id: undefined, balance: calculateBalance(users[user]) }
+			result: {
+				...globalUsers[user],
+				key: undefined,
+				_id: undefined,
+				balance: calculateBalance(globalUsers[user])
+			}
 		});
 	});
 
@@ -380,7 +416,7 @@ const PORT = process.env.PORT ?? 5000;
 			});
 		const digestedAuth = Buffer.from(encodedAuth, 'base64').toString('ascii');
 		const [user, token] = digestedAuth.split(':');
-		const [saltString, hashString] = users[user].key.split(':');
+		const [saltString, hashString] = globalUsers[user].key.split(':');
 		const salt = Buffer.from(saltString, 'hex');
 		const expectedHash = Buffer.from(hashString, 'hex');
 		const receivedHash = scryptSync(token, salt, 64);
@@ -396,10 +432,9 @@ const PORT = process.env.PORT ?? 5000;
 				result: null
 			});
 		}
-		const isOwnTransaction = users[user].transaction_ids.includes(
-			transactionId
-		);
-		const transaction = transactions.find(
+		const isOwnTransaction =
+			globalUsers[user].transaction_ids.includes(transactionId);
+		const transaction = globalTransactions.find(
 			(transaction) => transaction.id == transactionId
 		);
 
@@ -416,6 +451,46 @@ const PORT = process.env.PORT ?? 5000;
 			status: 200,
 			error: null,
 			result: transaction
+		});
+	});
+	api.get('/transaction-history', (request, response) => {
+		const [, encodedAuth] = String(request.headers['authorization']).split(' ');
+		if (typeof encodedAuth !== 'string')
+			return response.status(400).json({
+				status: 400,
+				error: {
+					code: 'INVALID_AUTH',
+					description: 'Invalid Authorization header.'
+				}
+			});
+		const digestedAuth = Buffer.from(encodedAuth, 'base64').toString('ascii');
+		const [user, token] = digestedAuth.split(':');
+		const [saltString, hashString] = globalUsers[user].key.split(':');
+		const salt = Buffer.from(saltString, 'hex');
+		const expectedHash = Buffer.from(hashString, 'hex');
+		const receivedHash = scryptSync(token, salt, 64);
+		const allow = timingSafeEqual(expectedHash, receivedHash);
+		if (!allow) {
+			return response.status(401).json({
+				status: 401,
+				error: {
+					code: 'UNAUTHORIZED_QUERY',
+					description: 'Incorrect credentials.'
+				},
+				result: null
+			});
+		}
+
+		const transactionIds = globalUsers[user].transaction_ids;
+		const userTransactions = transactionIds.map((id) => ({
+			...(globalTransactions.find((transaction) => transaction.id === id) ?? []),
+			_id: undefined
+		}));
+
+		return response.status(200).json({
+			status: 200,
+			error: null,
+			result: userTransactions
 		});
 	});
 
