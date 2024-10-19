@@ -405,40 +405,12 @@ const PORT = process.env.PORT ?? 5000;
 	});
 
 	api.get('/transaction-info', (request, response) => {
-		const [, encodedAuth] = String(request.headers['authorization']).split(' ');
-		if (typeof encodedAuth !== 'string')
-			return response.status(400).json({
-				status: 400,
-				error: {
-					code: 'INVALID_AUTH',
-					description: 'Invalid Authorization header.'
-				}
-			});
-		const digestedAuth = Buffer.from(encodedAuth, 'base64').toString('ascii');
-		const [user, token] = digestedAuth.split(':');
-		const [saltString, hashString] = globalUsers[user].key.split(':');
-		const salt = Buffer.from(saltString, 'hex');
-		const expectedHash = Buffer.from(hashString, 'hex');
-		const receivedHash = scryptSync(token, salt, 64);
-		const allow = timingSafeEqual(expectedHash, receivedHash);
 		const transactionId = String(request.query.transaction_id);
-		if (!allow) {
-			return response.status(401).json({
-				status: 401,
-				error: {
-					code: 'UNAUTHORIZED_QUERY',
-					description: 'Incorrect credentials.'
-				},
-				result: null
-			});
-		}
-		const isOwnTransaction =
-			globalUsers[user].transaction_ids.includes(transactionId);
 		const transaction = globalTransactions.find(
 			(transaction) => transaction.id == transactionId
 		);
 
-		if (!isOwnTransaction || transaction == undefined) {
+		if (transaction == undefined) {
 			return response.status(404).json({
 				status: 404,
 				error: {
