@@ -345,6 +345,15 @@ const PORT = process.env.PORT ?? 5000;
 				}
 			});
 
+
+		if (calculateBalance(globalUsers[username]) != 0)
+			return response.status(403).json({
+				status: 403,
+				error: {
+					code: 'NONZERO_BALANCE',
+					description: 'Cannot delete account with non-zero balance.'
+				}
+			});
 		delete globalUsers[username];
 		await usersCollection.deleteOne({ username });
 		await saveUsers();
